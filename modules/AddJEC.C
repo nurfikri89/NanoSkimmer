@@ -80,13 +80,19 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   // if (nEntries == 0): return;
   //==================================================
   //
-  //
+  // Make output TTree
   //
   //==================================================
   TFile outputTreeFile(outputFilePath.c_str(), "RECREATE");
-
+  
+  // First, lets switch off these branches
+  // in the input tree so that when we clone
+  // the tree, the new tree doesn't have them
+  // by default.
   inTree->SetBranchStatus("Jet_pt",0);
   inTree->SetBranchStatus("Jet_mass",0);
+  inTree->SetBranchStatus("PuppiMET_pt",0);
+  inTree->SetBranchStatus("PuppiMET_phi",0);
 
   TTree* outTree = inTree->CloneTree(0);
 
@@ -108,35 +114,37 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   Float_t PuppiMet_pt_nano;
   Float_t PuppiMet_phi_nano;
   Float_t PuppiMet_sumEt_nano;
-
-  outTree->Branch("Jet_pt_nano",        Jet_pt_nano,           "Jet_pt_nano[nJet]/F");
-  outTree->Branch("Jet_mass_nano",      Jet_mass_nano,         "Jet_mass_nano[nJet]/F");
-  outTree->Branch("Jet_pt_raw",         Jet_pt_raw,            "Jet_pt_raw[nJet]/F");
-  outTree->Branch("Jet_mass_raw",       Jet_mass_raw,          "Jet_mass_raw[nJet]/F");
-  outTree->Branch("Jet_rawFactor_nano", Jet_rawFactor_nano,    "Jet_rawFactor_nano[nJet]/F");
-  outTree->Branch("Jet_rawFactor",      Jet_rawFactor_updated, "Jet_rawFactor[nJet]/F");
-
-  // TBranch* b_jet_pt = outTree->GetBranch("Jet_pt");
-  // TBranch* b_jet_mass = outTree->GetBranch("Jet_mass");
-  // b_jet_pt->SetAddress(Jet_pt_updated);
-  // b_jet_mass->SetAddress(Jet_mass_updated);
-  outTree->Branch("Jet_pt",             Jet_pt_updated,        "Jet_pt[nJet]/F");
-  outTree->Branch("Jet_mass",           Jet_mass_updated,      "Jet_mass[nJet]/F");
-
-  outTree->Branch("PuppiMet_pt",         &PuppiMet_pt_updated,    "PuppiMet_pt/F");
-  outTree->Branch("PuppiMet_phi",        &PuppiMet_phi_updated,   "PuppiMet_phi/F");
-
-  outTree->Branch("PuppiMet_pt_nano",    &PuppiMet_pt_nano,    "PuppiMet_pt_nano/F");
-  outTree->Branch("PuppiMet_phi_nano",   &PuppiMet_phi_nano,   "PuppiMet_phi_nano/F");
-  outTree->Branch("PuppiMet_sumEt_nano", &PuppiMet_sumEt_nano, "PuppiMet_sumEt_nano/F");
-
-
+  
   //
+  // This is where we manually put in the branches 
+  // that we omitted when cloning original input tree
   //
+  outTree->Branch("Jet_pt",              Jet_pt_updated,        "Jet_pt[nJet]/F");
+  outTree->Branch("Jet_mass",            Jet_mass_updated,      "Jet_mass[nJet]/F");
+  outTree->Branch("PuppiMET_pt",         &PuppiMet_pt_updated,  "PuppiMET_pt/F");
+  outTree->Branch("PuppiMET_phi",        &PuppiMet_phi_updated, "PuppiMET_phi/F");
+  // Add these extra "Jet" branches
+  outTree->Branch("Jet_pt_nano",         Jet_pt_nano,           "Jet_pt_nano[nJet]/F");
+  outTree->Branch("Jet_mass_nano",       Jet_mass_nano,         "Jet_mass_nano[nJet]/F");
+  outTree->Branch("Jet_pt_raw",          Jet_pt_raw,            "Jet_pt_raw[nJet]/F");
+  outTree->Branch("Jet_mass_raw",        Jet_mass_raw,          "Jet_mass_raw[nJet]/F");
+  outTree->Branch("Jet_rawFactor_nano",  Jet_rawFactor_nano,    "Jet_rawFactor_nano[nJet]/F");
+  outTree->Branch("Jet_rawFactor",       Jet_rawFactor_updated, "Jet_rawFactor[nJet]/F");
+  outTree->Branch("PuppiMET_pt_nano",    &PuppiMet_pt_nano,     "PuppiMET_pt_nano/F");
+  outTree->Branch("PuppiMET_phi_nano",   &PuppiMet_phi_nano,    "PuppiMET_phi_nano/F");
+  outTree->Branch("PuppiMET_sumEt_nano", &PuppiMet_sumEt_nano,  "PuppiMET_sumEt_nano/F");
+
+  //==================================================
   //
+  // Setup TTreeReader for the input tree
   //
+  //==================================================
+  // We need to switch back on these branches in the input tree
+  // so that we can retrieve the values stored in the tree.
   inTree->SetBranchStatus("Jet_pt",1);
   inTree->SetBranchStatus("Jet_mass",1);
+  inTree->SetBranchStatus("PuppiMET_pt",1);
+  inTree->SetBranchStatus("PuppiMET_phi",1);
 
   TTreeReader reader(inTree);
 
@@ -177,12 +185,19 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
 
     float rho = *Rho_fixedGridRhoFastjetAll;
 
+    //==================================================
+    //
+    // For MET Type-1 re-correction with latest JEC.
+    // Start of with the RawPuppiMET and we'll correct
+    // each term jet-by-jet in the jet loop.
+    //
+    //==================================================
     float met_px_updated = (*RawPuppiMET_pt) * TMath::Cos((*RawPuppiMET_phi));
     float met_py_updated = (*RawPuppiMET_pt) * TMath::Sin((*RawPuppiMET_phi));
 
     //==================================================
     //
-    //
+    // Loop over main jet collection
     //
     //==================================================
     for (int iJet=0; iJet < *nJet; iJet++){
@@ -197,7 +212,7 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_mass_raw  = (1.f - recojet_rawFactor) * recojet_mass;
 
       //
-      //
+      // Get JEC.
       //
       jetCorrector.setJetPt(recojet_pt_raw);
       jetCorrector.setJetEta(recojet_eta);
@@ -221,7 +236,7 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
 
       //========================================================================
       //
-      // Type-I MET corrections
+      // MET Type-1 correction
       //
       //========================================================================
       float recojet_cosphi = TMath::Cos(recojet_phi);
@@ -246,7 +261,7 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_py_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * recojet_sinphi;
 
       //
-      // 3. 
+      // 3.
       //
       float recojet_pt_noMuOnlyL1 = recojet_pt_noMuRaw;
       jetCorrectorL1.setJetPt(recojet_pt_raw);
@@ -265,9 +280,12 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       }
     }
 
+    //==================================================
     //
+    // Loop over low pt jet collection. Only for
+    // MET Type-1 re-correction.
     //
-    //
+    //==================================================
     for (int iJet=0; iJet < *nCorrT1METJet; iJet++){
       float recojet_pt_raw    = CorrT1METJet_rawPt[iJet];
       float recojet_eta       = CorrT1METJet_eta[iJet];
@@ -276,7 +294,7 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_muonSubtrFactor = CorrT1METJet_muonSubtrFactor[iJet];
       //========================================================================
       //
-      // Type-I MET corrections
+      // MET Type-1 correction
       //
       //========================================================================
       float recojet_cosphi = TMath::Cos(recojet_phi);
