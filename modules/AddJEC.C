@@ -1,5 +1,6 @@
 #include <vector>
 #include <string>
+#include <numeric> // std::iota
 
 #include <TString.h>
 #include <TTree.h>
@@ -9,8 +10,39 @@
 #include <TTreeReaderValue.h>
 #include <TTreeReaderArray.h>
 
+#include <Math/PtEtaPhiE4D.h>
+#include <Math/PtEtaPhiM4D.h>
+#include <Math/LorentzVector.h>
+
 #include "CondFormats/JetMETObjects/interface/JetCorrectorParameters.h"
 #include "CondFormats/JetMETObjects/interface/FactorizedJetCorrector.h"
+
+FactorizedJetCorrector* SetupJetCorrector(std::string inDirPath, std::string L1="", std::string L2="", std::string L2L3Res=""){
+  std::cout << "Setup FactorizedJetCorrector with the following JEC files:" << std::endl;
+  std::vector<JetCorrectorParameters> vPar;
+  std::string fullPath;
+  if (L1 != ""){
+    fullPath = Form("%s/%s.txt",inDirPath.c_str(), L1.c_str());
+    std::cout << "Loading JEC:" << fullPath << std::endl;
+    JetCorrectorParameters L1JetPar(fullPath);
+    vPar.push_back(L1JetPar);
+  }
+  if (L2 != ""){
+    fullPath = Form("%s/%s.txt",inDirPath.c_str(), L2.c_str());
+    std::cout << "Loading JEC:" << fullPath << std::endl;
+    JetCorrectorParameters L2JetPar(fullPath);
+    vPar.push_back(L2JetPar);
+  }
+  if (L2L3Res != ""){
+    fullPath = Form("%s/%s.txt",inDirPath.c_str(), L2L3Res.c_str());
+    std::cout << "Loading JEC:" << fullPath << std::endl;
+    JetCorrectorParameters ResJetPar(fullPath);
+    vPar.push_back(ResJetPar);
+  }
+
+  FactorizedJetCorrector* jc = new FactorizedJetCorrector(vPar);
+  return jc;
+}
 
 void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string treeName, std::string jecVersion){
   std::cout << "=========================================================" << std::endl;
@@ -18,55 +50,41 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   std::cout << "inputFilePath: " << inputFilePath << std::endl;
   std::cout << "outputFilePath: " << outputFilePath << std::endl;
   std::cout << "treeName: " << treeName << std::endl;
-  //
-  //
-  //
-  std::cout << "Using following JEC files:" << std::endl;
-  std::string inDir("CondFormats/JetMETObjects/data/");
-  std::string txtFileRes(inDir+jecVersion+"_L2L3Residual_AK4PFPuppi.txt");
-  std::string txtFileL3(inDir+jecVersion+"_L3Absolute_AK4PFPuppi.txt");
-  std::string txtFileL2(inDir+jecVersion+"_L2Relative_AK4PFPuppi.txt");
-  std::string txtFileL1(inDir+jecVersion+"_L1FastJet_AK4PFPuppi.txt");
-  std::cout << txtFileRes << std::endl;
-  std::cout << txtFileL3 << std::endl;
-  std::cout << txtFileL2 << std::endl;
-  std::cout << txtFileL1 << std::endl;
 
-  std::cout << "Setup JetCorrectorParameters " << std::endl;
-
-  JetCorrectorParameters ResJetPar(txtFileRes);
-  JetCorrectorParameters L3JetPar(txtFileL3);
-  JetCorrectorParameters L2JetPar(txtFileL2);
-  JetCorrectorParameters L1JetPar(txtFileL1);
-
+  //==================================================
   //
-  // Load the JetCorrectorParameter objects into a vector, IMPORTANT: THE ORDER MATTERS HERE !!!!
+  // Setup
   //
-  std::cout << "Setup std::vector<JetCorrectorParameters> " << std::endl;
-  std::vector<JetCorrectorParameters> vPar;
-  vPar.push_back(ResJetPar);
-  vPar.push_back(L3JetPar);
-  vPar.push_back(L2JetPar);
-  vPar.push_back(L1JetPar);
+  //==================================================
+  std::string inDirPath("CondFormats/JetMETObjects/data/");
+  FactorizedJetCorrector* jetCorrector = SetupJetCorrector(inDirPath,
+    jecVersion+"_L1FastJet_AK4PFPuppi",
+    jecVersion+"_L2Relative_AK4PFPuppi",
+    jecVersion+"_L2L3Residual_AK4PFPuppi"
+  );
 
-  std::cout << "Setup FactorizedJetCorrector " << std::endl;
-  FactorizedJetCorrector jetCorrector(vPar);
-
-  std::cout << "Setup std::vector<JetCorrectorParameters> for L1Only " << std::endl;
-  std::vector<JetCorrectorParameters> vParL1;
-  vParL1.push_back(L1JetPar);
-
-  std::cout << "Setup FactorizedJetCorrector " << std::endl;
-  FactorizedJetCorrector jetCorrectorL1(vParL1);
-
+  //==================================================
   //
   //
   //
+  //==================================================
+  bool applyL1OnNoMuP4 = false;
+  FactorizedJetCorrector* jetCorrectorL1 = nullptr;
+  if (applyL1OnNoMuP4){
+    jetCorrectorL1 = SetupJetCorrector(inDirPath,
+      jecVersion+"_L1FastJet_AK4PFPuppi","",""
+    );
+  }
+
+  //==================================================
+  //
+  //
+  //
+  //==================================================
   std::cout << "Setup inputFile " << std::endl;
   TFile inputTreeFile(inputFilePath.c_str(), "OPEN");
 
   std::cout << "Retrieve inputTree " << std::endl;
-  // TTree* inTree = (TTree*) inputTreeFile.Get(treeName.c_str());
   TTree* inTree = inputTreeFile.Get<TTree>(treeName.c_str());
 
   if (!inTree) {
@@ -84,13 +102,14 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   //
   //==================================================
   TFile outputTreeFile(outputFilePath.c_str(), "RECREATE");
-  
+
   // First, lets switch off these branches
   // in the input tree so that when we clone
   // the tree, the new tree doesn't have them
   // by default.
   inTree->SetBranchStatus("Jet_pt",0);
   inTree->SetBranchStatus("Jet_mass",0);
+  inTree->SetBranchStatus("Jet_rawFactor",0);
   inTree->SetBranchStatus("PuppiMET_pt",0);
   inTree->SetBranchStatus("PuppiMET_phi",0);
 
@@ -108,15 +127,21 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   Float_t Jet_rawFactor_nano[nJetsMax];
   Float_t Jet_rawFactor_updated[nJetsMax];
 
+  Int_t Jet_IdxSortByPt[nJetsMax];
+
+  Float_t Jet_pt_noMuL1L2L3[nJetsMax];
+  Float_t CorrT1METJet_pt[nJetsMax];
+  Float_t CorrT1METJet_pt_noMuL1L2L3[nJetsMax];
+
   Float_t PuppiMet_pt_updated;
   Float_t PuppiMet_phi_updated;
 
   Float_t PuppiMet_pt_nano;
   Float_t PuppiMet_phi_nano;
   Float_t PuppiMet_sumEt_nano;
-  
+
   //
-  // This is where we manually put in the branches 
+  // This is where we manually put in the branches
   // that we omitted when cloning original input tree
   //
   outTree->Branch("Jet_pt",              Jet_pt_updated,        "Jet_pt[nJet]/F");
@@ -130,6 +155,12 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   outTree->Branch("Jet_mass_raw",        Jet_mass_raw,          "Jet_mass_raw[nJet]/F");
   outTree->Branch("Jet_rawFactor_nano",  Jet_rawFactor_nano,    "Jet_rawFactor_nano[nJet]/F");
   outTree->Branch("Jet_rawFactor",       Jet_rawFactor_updated, "Jet_rawFactor[nJet]/F");
+  outTree->Branch("Jet_IdxSortByPt",     Jet_IdxSortByPt,       "Jet_IdxSortByPt[nJet]/I");
+
+  outTree->Branch("Jet_pt_noMuL1L2L3",   Jet_pt_noMuL1L2L3, "Jet_pt_noMuL1L2L3[nJet]/F");
+  outTree->Branch("CorrT1METJet_pt",     CorrT1METJet_pt, "CorrT1METJet_pt[nCorrT1METJet]/F");
+  outTree->Branch("CorrT1METJet_pt_noMuL1L2L3", CorrT1METJet_pt_noMuL1L2L3, "CorrT1METJet_pt_noMuL1L2L3[nCorrT1METJet]/F");
+
   outTree->Branch("PuppiMET_pt_nano",    &PuppiMet_pt_nano,     "PuppiMET_pt_nano/F");
   outTree->Branch("PuppiMET_phi_nano",   &PuppiMet_phi_nano,    "PuppiMET_phi_nano/F");
   outTree->Branch("PuppiMET_sumEt_nano", &PuppiMet_sumEt_nano,  "PuppiMET_sumEt_nano/F");
@@ -143,6 +174,7 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   // so that we can retrieve the values stored in the tree.
   inTree->SetBranchStatus("Jet_pt",1);
   inTree->SetBranchStatus("Jet_mass",1);
+  inTree->SetBranchStatus("Jet_rawFactor",1);
   inTree->SetBranchStatus("PuppiMET_pt",1);
   inTree->SetBranchStatus("PuppiMET_phi",1);
 
@@ -160,12 +192,13 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   TTreeReaderArray<Float_t> Jet_neEmEF = {reader, "Jet_neEmEF"};
   TTreeReaderArray<Float_t> Jet_muonSubtrFactor = {reader, "Jet_muonSubtrFactor"};
 
-  TTreeReaderValue<Int_t>   nCorrT1METJet       = {reader, "nCorrT1METJet"};
-  TTreeReaderArray<Float_t> CorrT1METJet_rawPt  = {reader, "CorrT1METJet_rawPt"};
-  TTreeReaderArray<Float_t> CorrT1METJet_eta    = {reader, "CorrT1METJet_eta"};
-  TTreeReaderArray<Float_t> CorrT1METJet_phi    = {reader, "CorrT1METJet_phi"};
-  TTreeReaderArray<Float_t> CorrT1METJet_area   = {reader, "CorrT1METJet_area"};
-  TTreeReaderArray<Float_t> CorrT1METJet_EmEF   = {reader, "CorrT1METJet_EmEF"};
+  TTreeReaderValue<Int_t>   nCorrT1METJet        = {reader, "nCorrT1METJet"};
+  TTreeReaderArray<Float_t> CorrT1METJet_rawPt   = {reader, "CorrT1METJet_rawPt"};
+  TTreeReaderArray<Float_t> CorrT1METJet_eta     = {reader, "CorrT1METJet_eta"};
+  TTreeReaderArray<Float_t> CorrT1METJet_phi     = {reader, "CorrT1METJet_phi"};
+  TTreeReaderArray<Float_t> CorrT1METJet_rawMass = {reader, "CorrT1METJet_rawMass"};
+  TTreeReaderArray<Float_t> CorrT1METJet_area    = {reader, "CorrT1METJet_area"};
+  TTreeReaderArray<Float_t> CorrT1METJet_EmEF    = {reader, "CorrT1METJet_EmEF"};
   TTreeReaderArray<Float_t> CorrT1METJet_muonSubtrFactor = {reader, "CorrT1METJet_muonSubtrFactor"};
 
   TTreeReaderValue<Float_t> RawPuppiMET_pt    = {reader, "RawPuppiMET_pt"};
@@ -200,6 +233,9 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
     // Loop over main jet collection
     //
     //==================================================
+    //
+    std::vector<float> v_jet_pt_updated(*nJet,1.f);
+
     for (int iJet=0; iJet < *nJet; iJet++){
       float recojet_pt        = Jet_pt[iJet];
       float recojet_eta       = Jet_eta[iJet];
@@ -214,12 +250,12 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       //
       // Get JEC.
       //
-      jetCorrector.setJetPt(recojet_pt_raw);
-      jetCorrector.setJetEta(recojet_eta);
-      jetCorrector.setJetPhi(recojet_phi);
-      jetCorrector.setJetA(recojet_area);
-      jetCorrector.setRho(rho);
-      float jec = jetCorrector.getCorrection();
+      jetCorrector->setJetPt(recojet_pt_raw);
+      jetCorrector->setJetEta(recojet_eta);
+      jetCorrector->setJetPhi(recojet_phi);
+      jetCorrector->setJetA(recojet_area);
+      jetCorrector->setRho(rho);
+      float jec = jetCorrector->getCorrection();
       float recojet_pt_updated   = recojet_pt_raw * jec;
       float recojet_mass_updated = recojet_mass_raw * jec;
 
@@ -234,47 +270,63 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       Jet_mass_updated[iJet] = recojet_mass_updated;
       Jet_rawFactor_updated[iJet] = 1.f - (recojet_pt_raw/recojet_pt_updated);
 
+      v_jet_pt_updated[iJet] = recojet_pt_updated;
+
       //========================================================================
       //
       // MET Type-1 correction
       //
       //========================================================================
-      float recojet_cosphi = TMath::Cos(recojet_phi);
-      float recojet_sinphi = TMath::Sin(recojet_phi);
-
       //
       // 1. Get the jet raw pt without muons included
       //
-      float recojet_pt_noMuRaw = recojet_pt_raw * (1.f - recojet_muonSubtrFactor);
+      float recojet_pt_noMuRaw   = recojet_pt_raw * (1.f - recojet_muonSubtrFactor);
+      // This is not exactly the correct thing to do. We shouldn't be using the full
+      // jet eta and phi but the eta and phi of muon-less jet p4. Not possible with
+      // current NanoAODs.
+      float recojet_eta_noMuRaw  = recojet_eta;
+      float recojet_phi_noMuRaw  = recojet_phi;
+      float recojet_mass_noMuRaw = recojet_mass_raw * (1.f - recojet_muonSubtrFactor);
+      ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
+        recojet_p4_noMuRaw(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
+      );
 
       //
-      // 2. Apply JEC on this muon-less jet raw pt
-      //
-      jetCorrector.setJetPt(recojet_pt_noMuRaw);
-      jetCorrector.setJetEta(recojet_eta);
-      jetCorrector.setJetPhi(recojet_phi);
-      jetCorrector.setJetA(recojet_area);
-      jetCorrector.setRho(rho);
-      float jecForNoMuRaw = jetCorrector.getCorrection();
-      float recojet_pt_noMuL1L2L3 = recojet_pt_raw * jecForNoMuRaw;
-      float recojet_px_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * recojet_cosphi;
-      float recojet_py_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * recojet_sinphi;
+      // 2. Apply JEC on this muon-less jet raw p4
+      // The JEC used is the same JEC we apply on the full raw p4
+      auto  recojet_p4_noMuL1L2L3 = jec * recojet_p4_noMuRaw;
+      float recojet_pt_noMuL1L2L3 = recojet_p4_noMuL1L2L3.pt();
+      float recojet_px_noMuL1L2L3 = recojet_p4_noMuL1L2L3.px();
+      float recojet_py_noMuL1L2L3 = recojet_p4_noMuL1L2L3.py();
+      Jet_pt_noMuL1L2L3[iJet] = recojet_pt_noMuL1L2L3;
 
       //
       // 3.
       //
-      float recojet_pt_noMuOnlyL1 = recojet_pt_noMuRaw;
-      jetCorrectorL1.setJetPt(recojet_pt_raw);
-      jetCorrectorL1.setJetEta(recojet_eta);
-      jetCorrectorL1.setJetPhi(recojet_phi);
-      jetCorrectorL1.setJetA(recojet_area);
-      jetCorrectorL1.setRho(rho);
-      float jecOnlyL1ForNoMuRaw = jetCorrectorL1.getCorrection();
-      recojet_pt_noMuOnlyL1 *= jecOnlyL1ForNoMuRaw;
-      float recojet_px_noMuOnlyL1 = recojet_pt_noMuOnlyL1 * TMath::Cos(recojet_phi);
-      float recojet_py_noMuOnlyL1 = recojet_pt_noMuOnlyL1 * TMath::Sin(recojet_phi);
+      auto  recojet_p4_noMuOnlyL1 = recojet_p4_noMuRaw;
+      float recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
+      float recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
+      float recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+      if (applyL1OnNoMuP4 && jetCorrectorL1){
+        jetCorrectorL1->setJetPt(recojet_pt_raw);
+        jetCorrectorL1->setJetEta(recojet_eta);
+        jetCorrectorL1->setJetPhi(recojet_phi);
+        jetCorrectorL1->setJetA(recojet_area);
+        jetCorrectorL1->setRho(rho);
+        float jecOnlyL1ForNoMuRaw = jetCorrectorL1->getCorrection();
+        recojet_p4_noMuOnlyL1 = jecOnlyL1ForNoMuRaw * recojet_p4_noMuOnlyL1;
+        ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
+          recojet_p4_noMuL1(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
+        );
+        recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
+        recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
+        recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+      }
 
-      if ((recojet_pt_noMuL1L2L3 > 15.f) && (Jet_chEmEF[iJet] + Jet_neEmEF[iJet] < 0.9)){
+      //
+      // 4. Calculate the Type-1 correction and add it to the Raw MET
+      //
+      if ((recojet_pt_noMuL1L2L3 > 15.f) && (Jet_chEmEF[iJet] + Jet_neEmEF[iJet] < 0.9f)){
         met_px_updated -= (recojet_px_noMuL1L2L3 - recojet_px_noMuOnlyL1);
         met_py_updated -= (recojet_py_noMuL1L2L3 - recojet_py_noMuOnlyL1);
       }
@@ -290,8 +342,18 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_pt_raw    = CorrT1METJet_rawPt[iJet];
       float recojet_eta       = CorrT1METJet_eta[iJet];
       float recojet_phi       = CorrT1METJet_phi[iJet];
+      float recojet_mass_raw  = CorrT1METJet_rawMass[iJet];
       float recojet_area      = CorrT1METJet_area[iJet];
       float recojet_muonSubtrFactor = CorrT1METJet_muonSubtrFactor[iJet];
+
+      jetCorrector->setJetPt(recojet_pt_raw);
+      jetCorrector->setJetEta(recojet_eta);
+      jetCorrector->setJetPhi(recojet_phi);
+      jetCorrector->setJetA(recojet_area);
+      jetCorrector->setRho(rho);
+      float jec = jetCorrector->getCorrection();
+
+      CorrT1METJet_pt[iJet] = jec * recojet_pt_raw;
       //========================================================================
       //
       // MET Type-1 correction
@@ -300,42 +362,73 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_cosphi = TMath::Cos(recojet_phi);
       float recojet_sinphi = TMath::Sin(recojet_phi);
 
+      //========================================================================
       //
       // 1. Get the jet raw pt without muons included
       //
-      float recojet_pt_noMuRaw = recojet_pt_raw * (1.f - recojet_muonSubtrFactor);
+      float recojet_pt_noMuRaw   = recojet_pt_raw * (1.f - recojet_muonSubtrFactor);
+      // This is not exactly the correct thing to do. We shouldn't be using the full
+      // jet eta and phi but the eta and phi of muon-less jet p4. Not possible with
+      // current NanoAODs.
+      float recojet_eta_noMuRaw  = recojet_eta;
+      float recojet_phi_noMuRaw  = recojet_phi;
+      float recojet_mass_noMuRaw = recojet_mass_raw * (1.f - recojet_muonSubtrFactor);
+      ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
+        recojet_p4_noMuRaw(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
+      );
 
       //
-      // 2. Apply JEC on this muon-less jet raw pt
-      //
-      jetCorrector.setJetPt(recojet_pt_noMuRaw);
-      jetCorrector.setJetEta(recojet_eta);
-      jetCorrector.setJetPhi(recojet_phi);
-      jetCorrector.setJetA(recojet_area);
-      jetCorrector.setRho(rho);
-      float jecForNoMuRaw = jetCorrector.getCorrection();
-      float recojet_pt_noMuL1L2L3 = recojet_pt_raw * jecForNoMuRaw;
-      float recojet_px_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * recojet_cosphi;
-      float recojet_py_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * recojet_sinphi;
+      // 2. Apply JEC on this muon-less jet raw p4
+      // The JEC used is the same JEC we apply on the full raw p4
+      auto  recojet_p4_noMuL1L2L3 = jec * recojet_p4_noMuRaw;
+      float recojet_pt_noMuL1L2L3 = recojet_p4_noMuL1L2L3.pt();
+      float recojet_px_noMuL1L2L3 = recojet_p4_noMuL1L2L3.px();
+      float recojet_py_noMuL1L2L3 = recojet_p4_noMuL1L2L3.py();
+      CorrT1METJet_pt_noMuL1L2L3[iJet] = recojet_pt_noMuL1L2L3;
+
 
       //
       // 3.
       //
-      float recojet_pt_noMuOnlyL1 = recojet_pt_noMuRaw;
-      jetCorrectorL1.setJetPt(recojet_pt_raw);
-      jetCorrectorL1.setJetEta(recojet_eta);
-      jetCorrectorL1.setJetPhi(recojet_phi);
-      jetCorrectorL1.setJetA(recojet_area);
-      jetCorrectorL1.setRho(rho);
-      float jecOnlyL1ForNoMuRaw = jetCorrectorL1.getCorrection();
-      recojet_pt_noMuOnlyL1 *= jecOnlyL1ForNoMuRaw;
-      float recojet_px_noMuOnlyL1 = recojet_pt_noMuOnlyL1 * TMath::Cos(recojet_phi);
-      float recojet_py_noMuOnlyL1 = recojet_pt_noMuOnlyL1 * TMath::Sin(recojet_phi);
+      auto  recojet_p4_noMuOnlyL1 = recojet_p4_noMuRaw;
+      float recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
+      float recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
+      float recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+      if (applyL1OnNoMuP4 && jetCorrectorL1){
+        jetCorrectorL1->setJetPt(recojet_pt_raw);
+        jetCorrectorL1->setJetEta(recojet_eta);
+        jetCorrectorL1->setJetPhi(recojet_phi);
+        jetCorrectorL1->setJetA(recojet_area);
+        jetCorrectorL1->setRho(rho);
+        float jecOnlyL1ForNoMuRaw = jetCorrectorL1->getCorrection();
+        recojet_p4_noMuOnlyL1 = jecOnlyL1ForNoMuRaw * recojet_p4_noMuOnlyL1;
+        ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
+          recojet_p4_noMuL1(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
+        );
+        recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
+        recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
+        recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+      }
 
-      if ((recojet_pt_noMuL1L2L3 > 15.f) && (CorrT1METJet_EmEF[iJet] < 0.9)){
+      //
+      // 4. Calculate the Type-1 correction and add it to the Raw MET
+      //
+      if ((recojet_pt_noMuL1L2L3 > 15.f) && (CorrT1METJet_EmEF[iJet] < 0.9f)){
         met_px_updated -= (recojet_px_noMuL1L2L3 - recojet_px_noMuOnlyL1);
         met_py_updated -= (recojet_py_noMuL1L2L3 - recojet_py_noMuOnlyL1);
       }
+    }
+
+    std::vector<float> v_jet_updated_idx_sortByPt(*nJet);
+    std::iota(v_jet_updated_idx_sortByPt.begin(), v_jet_updated_idx_sortByPt.end(), 0);
+    std::sort(v_jet_updated_idx_sortByPt.begin(), v_jet_updated_idx_sortByPt.end(),
+      [&v_jet_pt_updated](float i1, float i2) {
+        return v_jet_pt_updated[i1] > v_jet_pt_updated[i2];
+      }
+    );
+
+    for (uint i=0; i < v_jet_updated_idx_sortByPt.size(); i++){
+      Jet_IdxSortByPt[i] = v_jet_updated_idx_sortByPt[i];
     }
 
     PuppiMet_pt_updated  = TMath::Sqrt((met_px_updated * met_px_updated) + (met_py_updated * met_py_updated));
@@ -349,6 +442,9 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
 
   std::cout << "NEntries in input  :" << nEntries << std::endl;
   std::cout << "NEntries in output :" << outTree->GetEntries() << std::endl;
+
+  if(jetCorrector) delete jetCorrector;
+  if(jetCorrectorL1) delete jetCorrectorL1;
 
   outTree->Write();
   outputTreeFile.Close();
