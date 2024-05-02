@@ -196,7 +196,6 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   TTreeReaderArray<Float_t> CorrT1METJet_rawPt   = {reader, "CorrT1METJet_rawPt"};
   TTreeReaderArray<Float_t> CorrT1METJet_eta     = {reader, "CorrT1METJet_eta"};
   TTreeReaderArray<Float_t> CorrT1METJet_phi     = {reader, "CorrT1METJet_phi"};
-  TTreeReaderArray<Float_t> CorrT1METJet_rawMass = {reader, "CorrT1METJet_rawMass"};
   TTreeReaderArray<Float_t> CorrT1METJet_area    = {reader, "CorrT1METJet_area"};
   TTreeReaderArray<Float_t> CorrT1METJet_EmEF    = {reader, "CorrT1METJet_EmEF"};
   TTreeReaderArray<Float_t> CorrT1METJet_muonSubtrFactor = {reader, "CorrT1METJet_muonSubtrFactor"};
@@ -286,27 +285,21 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       // current NanoAODs.
       float recojet_eta_noMuRaw  = recojet_eta;
       float recojet_phi_noMuRaw  = recojet_phi;
-      float recojet_mass_noMuRaw = recojet_mass_raw * (1.f - recojet_muonSubtrFactor);
-      ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
-        recojet_p4_noMuRaw(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
-      );
 
       //
       // 2. Apply JEC on this muon-less jet raw p4
       // The JEC used is the same JEC we apply on the full raw p4
-      auto  recojet_p4_noMuL1L2L3 = jec * recojet_p4_noMuRaw;
-      float recojet_pt_noMuL1L2L3 = recojet_p4_noMuL1L2L3.pt();
-      float recojet_px_noMuL1L2L3 = recojet_p4_noMuL1L2L3.px();
-      float recojet_py_noMuL1L2L3 = recojet_p4_noMuL1L2L3.py();
+      float recojet_pt_noMuL1L2L3 = jec * recojet_pt_noMuRaw;
+      float recojet_px_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
+      float recojet_py_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       Jet_pt_noMuL1L2L3[iJet] = recojet_pt_noMuL1L2L3;
 
       //
       // 3.
       //
-      auto  recojet_p4_noMuOnlyL1 = recojet_p4_noMuRaw;
-      float recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
-      float recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
-      float recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+      float recojet_pt_noMuOnlyL1 = recojet_pt_noMuRaw;
+      float recojet_px_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
+      float recojet_py_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       if (applyL1OnNoMuP4 && jetCorrectorL1){
         jetCorrectorL1->setJetPt(recojet_pt_raw);
         jetCorrectorL1->setJetEta(recojet_eta);
@@ -314,13 +307,9 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
         jetCorrectorL1->setJetA(recojet_area);
         jetCorrectorL1->setRho(rho);
         float jecOnlyL1ForNoMuRaw = jetCorrectorL1->getCorrection();
-        recojet_p4_noMuOnlyL1 = jecOnlyL1ForNoMuRaw * recojet_p4_noMuOnlyL1;
-        ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
-          recojet_p4_noMuL1(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
-        );
-        recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
-        recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
-        recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+        recojet_pt_noMuOnlyL1 *= jecOnlyL1ForNoMuRaw;
+        recojet_px_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
+        recojet_py_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       }
 
       //
@@ -342,7 +331,6 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_pt_raw    = CorrT1METJet_rawPt[iJet];
       float recojet_eta       = CorrT1METJet_eta[iJet];
       float recojet_phi       = CorrT1METJet_phi[iJet];
-      float recojet_mass_raw  = CorrT1METJet_rawMass[iJet];
       float recojet_area      = CorrT1METJet_area[iJet];
       float recojet_muonSubtrFactor = CorrT1METJet_muonSubtrFactor[iJet];
 
@@ -362,7 +350,6 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       float recojet_cosphi = TMath::Cos(recojet_phi);
       float recojet_sinphi = TMath::Sin(recojet_phi);
 
-      //========================================================================
       //
       // 1. Get the jet raw pt without muons included
       //
@@ -372,28 +359,21 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       // current NanoAODs.
       float recojet_eta_noMuRaw  = recojet_eta;
       float recojet_phi_noMuRaw  = recojet_phi;
-      float recojet_mass_noMuRaw = recojet_mass_raw * (1.f - recojet_muonSubtrFactor);
-      ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
-        recojet_p4_noMuRaw(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
-      );
 
       //
       // 2. Apply JEC on this muon-less jet raw p4
       // The JEC used is the same JEC we apply on the full raw p4
-      auto  recojet_p4_noMuL1L2L3 = jec * recojet_p4_noMuRaw;
-      float recojet_pt_noMuL1L2L3 = recojet_p4_noMuL1L2L3.pt();
-      float recojet_px_noMuL1L2L3 = recojet_p4_noMuL1L2L3.px();
-      float recojet_py_noMuL1L2L3 = recojet_p4_noMuL1L2L3.py();
+      float recojet_pt_noMuL1L2L3 = jec * recojet_pt_noMuRaw;
+      float recojet_px_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
+      float recojet_py_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       CorrT1METJet_pt_noMuL1L2L3[iJet] = recojet_pt_noMuL1L2L3;
-
 
       //
       // 3.
       //
-      auto  recojet_p4_noMuOnlyL1 = recojet_p4_noMuRaw;
-      float recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
-      float recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
-      float recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+      float recojet_pt_noMuOnlyL1 = recojet_pt_noMuRaw;
+      float recojet_px_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
+      float recojet_py_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       if (applyL1OnNoMuP4 && jetCorrectorL1){
         jetCorrectorL1->setJetPt(recojet_pt_raw);
         jetCorrectorL1->setJetEta(recojet_eta);
@@ -401,13 +381,9 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
         jetCorrectorL1->setJetA(recojet_area);
         jetCorrectorL1->setRho(rho);
         float jecOnlyL1ForNoMuRaw = jetCorrectorL1->getCorrection();
-        recojet_p4_noMuOnlyL1 = jecOnlyL1ForNoMuRaw * recojet_p4_noMuOnlyL1;
-        ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> >
-          recojet_p4_noMuL1(recojet_pt_noMuRaw,recojet_eta_noMuRaw,recojet_phi_noMuRaw,recojet_mass_noMuRaw
-        );
-        recojet_pt_noMuOnlyL1 = recojet_p4_noMuOnlyL1.pt();
-        recojet_px_noMuOnlyL1 = recojet_p4_noMuOnlyL1.px();
-        recojet_py_noMuOnlyL1 = recojet_p4_noMuOnlyL1.py();
+        recojet_pt_noMuOnlyL1 *= jecOnlyL1ForNoMuRaw;
+        recojet_px_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
+        recojet_py_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       }
 
       //
