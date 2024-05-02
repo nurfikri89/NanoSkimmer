@@ -16,7 +16,8 @@ args = parser.parse_args()
 sampleName = args.sample
 nfiles = args.nfiles
 
-goldenJSONPath  = "data/lumi/Collisions24_13p6TeV_378981_380074_DCSOnly_TkPx.json"
+# goldenJSONPath  = "data/lumi/Collisions24_13p6TeV_378981_380074_DCSOnly_TkPx.json"
+goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_379470_Golden.json"
 
 inFiles=[]
 with open(f"./samples/{sampleName}.txt", 'r') as txtfile:
@@ -96,11 +97,25 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   outFilePath=f"./output/NanoSkim_{sampleName}_{inFileName}.root"
   branchesToSave = df.GetColumnNames()
 
+  branchesToSaveFinal = []
+  for b in branchesToSave:
+    bStr = str(b)
+    isHLTNotJetFlag = ("HLT_" in bStr or "DST_" in bStr) and not("PFJet" in bStr)
+    isL1Flag =  "L1_" in bStr
+    isLowPtElec =  "LowPtElectron_" in bStr
+    isSV =  "nSV" in bStr or "SV_" in bStr
+    isSubJet =  "nSubJet" in bStr or "SubJet_" in bStr
+    isFatJet =  "nFatJet" in bStr or "FatJet_" in bStr
+    isPPS =  "nProton" in bStr or "Proton_" in bStr
+    isTauProd =  "nTauProd" in bStr or "TauProd_" in bStr
+    if not(isHLTNotJetFlag or isL1Flag or isLowPtElec or \
+      isSV or isSubJet or isFatJet or isPPS or isTauProd):
+      branchesToSaveFinal.append(bStr)
   rdf_opts = ROOT.RDF.RSnapshotOptions()
   rdf_opts.fLazy = True
-  # rdf_opts.fCompressionLevel = 9
-  # rdf_opts.fCompressionAlgorithm = 2
-  df = df.Snapshot("Events", outFilePath, branchesToSave, rdf_opts)
+  rdf_opts.fCompressionLevel = 9
+  rdf_opts.fCompressionAlgorithm = 2
+  df = df.Snapshot("Events", outFilePath, branchesToSaveFinal, rdf_opts)
   # print("After snapshot")
 
   print(f"{df_count_initial.GetValue()=}")
