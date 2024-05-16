@@ -14,21 +14,24 @@ timerMain.Start()
 # outputFileDir="./output_JEC_Summer23BPixPrompt23/"
 # jecVersion="Summer23BPixPrompt23_RunD_V1_DATA"
 
-# outputFileDir="./output_JEC_Winter23Prompt23/"
-# jecVersion="Winter23Prompt23_RunA_V1_DATA"
+inputFileDir="./output/"
+outputFileDir="./output_JEC_Prompt24_V2M/"
+jecVersion="Prompt24_V2M"
 
-inputFileDir="./nanoPrecision_input/"
-outputFileDir="./nanoPrecision_output_Winter23_V2_AddJEC/"
-jecVersion="Winter23Prompt23_V2_MC"
+# inputFileDir="./nanoPrecision_input/"
+# outputFileDir="./nanoPrecision_output_Winter23_V2_AddJEC/"
+# jecVersion="Winter23Prompt23_V2_MC"
 
 inFileList = [f for f in glob.glob(inputFileDir+"*.root")]
-inFileList = inFileList[0:4]
+# inFileList = inFileList[0:1]
+# inFileList = ["./output/NanoSkim_JetMET0_Run2024C-PromptReco-v1_NANOAOD_0201fc66-9eaa-445a-9a44-c1ced6cf5453.root"]
 
 nInFiles = len(inFileList)
 
 for iFile, inputFilePath in enumerate(inFileList):
   inputFileName=inputFilePath.split("/")[-1]
   outputFileName=inputFileName.replace("NanoSkim","NanoSkimJEC")
+  outputFileName=inputFileName.replace("NanoAOD","NanoAODJEC")
   outputFilePath=outputFileDir+outputFileName
 
   print(f"Run AddJEC() for file {iFile} / {nInFiles}")

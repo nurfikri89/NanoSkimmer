@@ -17,7 +17,10 @@ sampleName = args.sample
 nfiles = args.nfiles
 
 # goldenJSONPath  = "data/lumi/Collisions24_13p6TeV_378981_380074_DCSOnly_TkPx.json"
-goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_379470_Golden.json"
+# goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_379470_Golden.json"
+# goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_379866_Golden.json"
+# goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380115_Golden.json"
+goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380470_Golden.json"
 
 inFiles=[]
 with open(f"./samples/{sampleName}.txt", 'r') as txtfile:
@@ -30,6 +33,7 @@ else:
   print("Process all files")
 
 PathPrefix=""
+inFiles = [f for f in inFiles if not(f.startswith("#"))]
 inFilesFinal = [PathPrefix+f for f in inFiles]
 nFiles = len(inFilesFinal)
 
@@ -118,12 +122,17 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   df = df.Snapshot("Events", outFilePath, branchesToSaveFinal, rdf_opts)
   # print("After snapshot")
 
-  print(f"{df_count_initial.GetValue()=}")
-  print(f"{df_count_final.GetValue()=}")
+  ncount_initial=df_count_initial.GetValue()
+  ncount_final=df_count_final.GetValue()
+
+  print(f"{ncount_initial=}")
+  print(f"{ncount_final=}")
+
+  if ncount_final == 0:
+    print(f"No events at the end. Deleting output file: {outFilePath}")
+    os.remove(outFilePath)
 
   del df
-
-
 
 print("\n")
 print(f"Skimming nFiles = {nFiles}")

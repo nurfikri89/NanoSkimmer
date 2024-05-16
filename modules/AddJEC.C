@@ -9,6 +9,8 @@
 #include <TTreeReader.h>
 #include <TTreeReaderValue.h>
 #include <TTreeReaderArray.h>
+#include <TH1D.h>
+#include <TH2D.h>
 
 #include <Math/PtEtaPhiE4D.h>
 #include <Math/PtEtaPhiM4D.h>
@@ -44,6 +46,28 @@ FactorizedJetCorrector* SetupJetCorrector(std::string inDirPath, std::string L1=
   return jc;
 }
 
+TH2D* SetupJetVetoMap(std::string inDirPath,std::string inFileName, std::string vetomapName){
+  std::string fullPath = Form("%s/%s.root",inDirPath.c_str(), inFileName.c_str());
+
+  TFile* inFile = nullptr;
+  inFile = new TFile(fullPath.c_str(),"OPEN");
+
+  TH2D* h2 = nullptr;
+  if (inFile)
+    h2 = (TH2D*)inFile->Get(vetomapName.c_str());
+
+  TH2D* h2C = nullptr;
+  if (h2){
+    h2C = (TH2D*)h2->Clone((vetomapName+"_C").c_str());
+    h2C->SetDirectory(0);
+  }
+
+  if (inFile)
+    inFile->Close();
+
+  return h2C;
+}
+
 void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string treeName, std::string jecVersion){
   std::cout << "=========================================================" << std::endl;
   std::cout << "AddJEC()::Start" << std::endl;
@@ -56,13 +80,29 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   // Setup
   //
   //==================================================
-  std::string inDirPath("CondFormats/JetMETObjects/data/");
-  FactorizedJetCorrector* jetCorrector = SetupJetCorrector(inDirPath,
-    jecVersion+"_L1FastJet_AK4PFPuppi",
-    jecVersion+"_L2Relative_AK4PFPuppi",
-    jecVersion+"_L2L3Residual_AK4PFPuppi"
-  );
+  std::string inDirPath("");
+  FactorizedJetCorrector* jetCorrector = nullptr;
+  TH2D* h2_jetvetomap = nullptr;
 
+  // inDirPath("CondFormats/JetMETObjects/data/");
+  // jetCorrector = SetupJetCorrector(inDirPath,
+  //   jecVersion+"_L1FastJet_AK4PFPuppi",
+  //   jecVersion+"_L2Relative_AK4PFPuppi",
+  //   jecVersion+"_L2L3Residual_AK4PFPuppi"
+  // );
+
+  if (jecVersion == "Prompt24_V2M"){
+    inDirPath = "CondFormats/JetMETObjects/data/Prompt24_V2M/";
+    jetCorrector = SetupJetCorrector(inDirPath,
+      "",
+      "Winter24Run3_V1_MC_L2Relative_AK4PUPPI",
+      "Prompt24_Run2024BC_V2M_DATA_L2L3Residual_AK4PFPuppi"
+    );
+    h2_jetvetomap = SetupJetVetoMap(
+      inDirPath,
+      "jetveto2024BC_V2M","jetvetomap"
+    );
+  }
   //==================================================
   //
   //
@@ -127,6 +167,8 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   Float_t Jet_rawFactor_nano[nJetsMax];
   Float_t Jet_rawFactor_updated[nJetsMax];
 
+  Int_t Jet_InVetoRegion[nJetsMax];
+
   Int_t Jet_IdxSortByPt[nJetsMax];
 
   Float_t Jet_pt_noMuL1L2L3[nJetsMax];
@@ -155,6 +197,8 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   outTree->Branch("Jet_mass_raw",        Jet_mass_raw,          "Jet_mass_raw[nJet]/F");
   outTree->Branch("Jet_rawFactor_nano",  Jet_rawFactor_nano,    "Jet_rawFactor_nano[nJet]/F");
   outTree->Branch("Jet_rawFactor",       Jet_rawFactor_updated, "Jet_rawFactor[nJet]/F");
+  outTree->Branch("Jet_InVetoRegion",    Jet_InVetoRegion,      "Jet_InVetoRegion[nJet]/I");
+
   outTree->Branch("Jet_IdxSortByPt",     Jet_IdxSortByPt,       "Jet_IdxSortByPt[nJet]/I");
 
   outTree->Branch("Jet_pt_noMuL1L2L3",   Jet_pt_noMuL1L2L3, "Jet_pt_noMuL1L2L3[nJet]/F");
@@ -273,6 +317,18 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
 
       //========================================================================
       //
+      // Check if jet is in jetveto regioon
+      //
+      //========================================================================
+      Jet_InVetoRegion[iJet] = 0;
+      if(h2_jetvetomap){
+        int i1 = h2_jetvetomap->GetXaxis()->FindBin(recojet_eta);
+        int j1 = h2_jetvetomap->GetYaxis()->FindBin(recojet_phi);
+        Jet_InVetoRegion[iJet] = int(h2_jetvetomap->GetBinContent(i1, j1) > 0);
+      }
+
+      //========================================================================
+      //
       // MET Type-1 correction
       //
       //========================================================================
@@ -298,8 +354,8 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       // 3.
       //
       float recojet_pt_noMuOnlyL1 = recojet_pt_noMuRaw;
-      float recojet_px_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
-      float recojet_py_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
+      float recojet_px_noMuOnlyL1 = recojet_pt_noMuRaw * TMath::Cos(recojet_phi_noMuRaw);
+      float recojet_py_noMuOnlyL1 = recojet_pt_noMuRaw * TMath::Sin(recojet_phi_noMuRaw);
       if (applyL1OnNoMuP4 && jetCorrectorL1){
         jetCorrectorL1->setJetPt(recojet_pt_raw);
         jetCorrectorL1->setJetEta(recojet_eta);
@@ -364,8 +420,8 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       // 2. Apply JEC on this muon-less jet raw p4
       // The JEC used is the same JEC we apply on the full raw p4
       float recojet_pt_noMuL1L2L3 = jec * recojet_pt_noMuRaw;
-      float recojet_px_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
-      float recojet_py_noMuL1L2L3 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
+      float recojet_px_noMuL1L2L3 = recojet_pt_noMuRaw * TMath::Cos(recojet_phi_noMuRaw);
+      float recojet_py_noMuL1L2L3 = recojet_pt_noMuRaw * TMath::Sin(recojet_phi_noMuRaw);
       CorrT1METJet_pt_noMuL1L2L3[iJet] = recojet_pt_noMuL1L2L3;
 
       //
@@ -421,6 +477,7 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
 
   if(jetCorrector) delete jetCorrector;
   if(jetCorrectorL1) delete jetCorrectorL1;
+  if(h2_jetvetomap) delete h2_jetvetomap;
 
   outTree->Write();
   outputTreeFile.Close();
