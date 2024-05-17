@@ -1,11 +1,12 @@
 import os
 import glob
 import argparse
+import subprocess
 import ROOT
 ROOT.gROOT.SetBatch()
 ROOT.gSystem.Load("obj/libHelpers.so")
 
-XROOTD="root://xrootd-cms.infn.it/"
+TMPDIR=os.getenv("TMPDIR")
 
 parser = argparse.ArgumentParser("")
 parser.add_argument('-s', '--sample',   type=str,  default="")
@@ -14,14 +15,12 @@ parser.add_argument('-f', '--nfiles',   type=int,  default=-1)
 parser.add_argument('-m', '--isMC',     action='store_true', default=False)
 args = parser.parse_args()
 
+downloadInput = True
+
 sampleName = args.sample
 nfiles = args.nfiles
 isMC = args.isMC
 
-# goldenJSONPath  = "data/lumi/Collisions24_13p6TeV_378981_380074_DCSOnly_TkPx.json"
-# goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_379470_Golden.json"
-# goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_379866_Golden.json"
-# goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380115_Golden.json"
 goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380470_Golden.json"
 
 inFiles=[]
@@ -34,14 +33,14 @@ if nfiles > 0:
 else:
   print("Process all files")
 
-PathPrefix=""
-inFiles = [f for f in inFiles if not(f.startswith("#"))]
-inFilesFinal = [PathPrefix+f for f in inFiles]
+#
+#
+#
+inFilesFinal = [f for f in inFiles if not(f.startswith("#"))]
 nFiles = len(inFilesFinal)
 
 print(f"Processing sample {sampleName}")
 print(f"isMC = {isMC}")
-
 ##########################################
 #
 #
@@ -57,12 +56,31 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   inFileName = inFilePath.split('/')[-1]
   inFileName = inFileName.replace(".root","")
 
+  PathPrefix="root://xrootd-cms.infn.it/"
+
+  inFileInTMPDIR = False
+  inFilePathFinal = None
+
+  if inFilePath.startswith("/store/"):
+    inFilePathTmp = PathPrefix+inFilePath
+    if downloadInput:
+      inFilePathFinal = f"{TMPDIR}/{inFileName}.root"
+      print(f"Copying input file {inFilePathTmp}")
+      print(f"to tmp dir: {inFilePathFinal}")
+      command = ["xrdcp", "-f", inFilePathTmp, inFilePathFinal]
+      subprocess.run(command)
+      inFileInTMPDIR = True
+    else:
+      inFilePathFinal = inFilePathTmp
+  else:
+    inFilePathFinal = inFilePath
+
   print("")
   print("==============================================")
-  print(f"Skimming {iFile}/{nFiles} : {inFilePath}")
+  print(f"Skimming {iFile}/{nFiles} : {inFilePathFinal}")
 
-  df = ROOT.ROOT.RDataFrame("Events",inFilePath)
-  # ROOT.RDF.Experimental.AddProgressBar(df) #Only available in ROOT version >= 6.30
+  df = ROOT.ROOT.RDataFrame("Events",inFilePathFinal)
+  ROOT.RDF.Experimental.AddProgressBar(df) #Only available in ROOT version >= 6.30
   df_count_initial = df.Count()
 
   if not(isMC):
@@ -103,9 +121,19 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   # df = ROOT.AddJEC(ROOT.RDF.AsRNode(df))
   df_count_final = df.Count()
 
-  outFilePath=f"./output/NanoSkim_{sampleName}_{inFileName}.root"
-  branchesToSave = df.GetColumnNames()
+  #
+  #
+  #
+  outFileName=f"NanoSkim_{sampleName}_{inFileName}.root"
+  outFilePathTemp=f"{TMPDIR}/{outFileName}.root"
 
+  outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/"
+  outFilePathFinal=""
+  if "/eos/user" in outDir:  outFilePathFinal+="root://eosuser.cern.ch/"
+  elif "/eos/cms" in outDir: outFilePathFinal+="root://eoscms.cern.ch/"
+  outFilePathFinal += f"{outDir}/{outFileName}.root"
+
+  branchesToSave = df.GetColumnNames()
   branchesToSaveFinal = []
   for b in branchesToSave:
     bStr = str(b)
@@ -148,7 +176,7 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   rdf_opts.fLazy = True
   rdf_opts.fCompressionLevel = 9
   rdf_opts.fCompressionAlgorithm = 2
-  df = df.Snapshot("Events", outFilePath, branchesToSaveFinal, rdf_opts)
+  df = df.Snapshot("Events", outFilePathTemp, branchesToSaveFinal, rdf_opts)
   # print("After snapshot")
 
   ncount_initial=df_count_initial.GetValue()
@@ -158,8 +186,16 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   print(f"{ncount_final=}")
 
   if ncount_final == 0:
-    print(f"No events at the end. Deleting output file: {outFilePath}")
-    os.remove(outFilePath)
+    print(f"No events at the end. Deleting output file: {outFilePathTemp}")
+    os.remove(outFilePathTemp)
+  else:
+    print(f"Copying output file to final path: {outFilePathFinal}")
+    command = ["xrdcp", "-f", outFilePathTemp, outFilePathFinal]
+    subprocess.run(command)
+
+  if inFileInTMPDIR:
+    os.remove(outFilePathTemp)
+
 
   del df
 
