@@ -68,7 +68,7 @@ TH2D* SetupJetVetoMap(std::string inDirPath,std::string inFileName, std::string 
   return h2C;
 }
 
-void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string treeName, std::string jecVersion){
+void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string treeName, std::string jecVersion, bool isMC=false){
   std::cout << "=========================================================" << std::endl;
   std::cout << "AddJEC()::Start" << std::endl;
   std::cout << "inputFilePath: " << inputFilePath << std::endl;
@@ -93,11 +93,19 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
 
   if (jecVersion == "Prompt24_V2M"){
     inDirPath = "CondFormats/JetMETObjects/data/Prompt24_V2M/";
-    jetCorrector = SetupJetCorrector(inDirPath,
-      "",
-      "Winter24Run3_V1_MC_L2Relative_AK4PUPPI",
-      "Prompt24_Run2024BC_V2M_DATA_L2L3Residual_AK4PFPuppi"
-    );
+    if(isMC){
+      jetCorrector = SetupJetCorrector(inDirPath,
+        "",
+        "Winter24Run3_V1_MC_L2Relative_AK4PUPPI",
+        ""
+      );
+    }else{
+      jetCorrector = SetupJetCorrector(inDirPath,
+        "",
+        "Winter24Run3_V1_MC_L2Relative_AK4PUPPI",
+        "Prompt24_Run2024BC_V2M_DATA_L2L3Residual_AK4PFPuppi"
+      );
+    }
     h2_jetvetomap = SetupJetVetoMap(
       inDirPath,
       "jetveto2024BC_V2M","jetvetomap"
@@ -241,8 +249,9 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   TTreeReaderArray<Float_t> CorrT1METJet_eta     = {reader, "CorrT1METJet_eta"};
   TTreeReaderArray<Float_t> CorrT1METJet_phi     = {reader, "CorrT1METJet_phi"};
   TTreeReaderArray<Float_t> CorrT1METJet_area    = {reader, "CorrT1METJet_area"};
-  TTreeReaderArray<Float_t> CorrT1METJet_EmEF    = {reader, "CorrT1METJet_EmEF"};
   TTreeReaderArray<Float_t> CorrT1METJet_muonSubtrFactor = {reader, "CorrT1METJet_muonSubtrFactor"};
+  TTreeReaderArray<Float_t> CorrT1METJet_EmEF    = {reader, "CorrT1METJet_EmEF"};
+  bool hasEmEF = true;
 
   TTreeReaderValue<Float_t> RawPuppiMET_pt    = {reader, "RawPuppiMET_pt"};
   TTreeReaderValue<Float_t> RawPuppiMET_phi   = {reader, "RawPuppiMET_phi"};
@@ -251,9 +260,21 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
   TTreeReaderValue<Float_t> PuppiMET_phi   = {reader, "PuppiMET_phi"};
   TTreeReaderValue<Float_t> PuppiMET_sumEt = {reader, "PuppiMET_sumEt"};
 
+  bool firstEntry=true;
+
   for(uint iEntry=0; iEntry < nEntries; iEntry++){
     reader.SetLocalEntry(iEntry);
     inTree->GetEntry(iEntry);
+
+    if (firstEntry){
+      if (CorrT1METJet_EmEF.GetSetupStatus() < 0){
+        hasEmEF = false;
+        std::cout << "========================================================================" << std::endl;
+        std::cout << "WARNING. CorrT1METJet_EmEF does not exist!!! Will not try to read branch" << std::endl;
+        std::cout << "========================================================================" << std::endl;
+      }
+      firstEntry=false;
+    }
 
     if (iEntry % 1000 == 0){
       std::cout << iEntry << " / " << nEntries << std::endl;
@@ -367,11 +388,12 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
         recojet_px_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Cos(recojet_phi_noMuRaw);
         recojet_py_noMuOnlyL1 = recojet_pt_noMuL1L2L3 * TMath::Sin(recojet_phi_noMuRaw);
       }
+      float recojet_emEF = Jet_chEmEF[iJet] + Jet_neEmEF[iJet];
 
       //
       // 4. Calculate the Type-1 correction and add it to the Raw MET
       //
-      if ((recojet_pt_noMuL1L2L3 > 15.f) && (Jet_chEmEF[iJet] + Jet_neEmEF[iJet] < 0.9f)){
+      if ((recojet_pt_noMuL1L2L3 > 15.f) && (recojet_emEF < 0.9f)){
         met_px_updated -= (recojet_px_noMuL1L2L3 - recojet_px_noMuOnlyL1);
         met_py_updated -= (recojet_py_noMuL1L2L3 - recojet_py_noMuOnlyL1);
       }
@@ -445,7 +467,12 @@ void AddJEC(std::string inputFilePath, std::string outputFilePath, std::string t
       //
       // 4. Calculate the Type-1 correction and add it to the Raw MET
       //
-      if ((recojet_pt_noMuL1L2L3 > 15.f) && (CorrT1METJet_EmEF[iJet] < 0.9f)){
+      float recojet_emEF = 0.;
+      if (hasEmEF){
+        recojet_emEF = CorrT1METJet_EmEF[iJet];
+      }
+
+      if ((recojet_pt_noMuL1L2L3 > 15.f) && (recojet_emEF < 0.9f)){
         met_px_updated -= (recojet_px_noMuL1L2L3 - recojet_px_noMuOnlyL1);
         met_py_updated -= (recojet_py_noMuL1L2L3 - recojet_py_noMuOnlyL1);
       }
