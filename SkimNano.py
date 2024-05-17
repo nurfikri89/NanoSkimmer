@@ -87,7 +87,7 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
     inFilePathFinal = inFilePath
 
   df = ROOT.ROOT.RDataFrame("Events",inFilePathFinal)
-  ROOT.RDF.Experimental.AddProgressBar(df) #Only available in ROOT version >= 6.30
+  # ROOT.RDF.Experimental.AddProgressBar(df) #Only available in ROOT version >= 6.30
   df_count_initial = df.Count()
 
   if not(isMC):
