@@ -22,7 +22,14 @@ nfiles = args.nfiles
 isMC = args.isMC
 
 goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380470_Golden.json"
+outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/" #LXPLUS
+outDir = f"./output/" #Hefaistos
 
+##########################################
+#
+#
+#
+##########################################
 inFiles=[]
 with open(f"./samples/{sampleName}.txt", 'r') as txtfile:
   inFiles = [line.rstrip() for line in txtfile]
@@ -39,13 +46,13 @@ else:
 inFilesFinal = [f for f in inFiles if not(f.startswith("#"))]
 nFiles = len(inFilesFinal)
 
+##########################################
+#
+#
+#
+##########################################
 print(f"Processing sample {sampleName}")
 print(f"isMC = {isMC}")
-##########################################
-#
-#
-#
-##########################################
 ROOT.ROOT.EnableImplicitMT(args.cpus)
 
 if not(isMC):
@@ -53,12 +60,16 @@ if not(isMC):
   ROOT.init_json(goldenJSONPath)
 
 def SkimNanoFile(nFiles, iFile, inFilePath):
+  print("")
+  print("==============================================")
+  print(f"Skimming {iFile}/{nFiles} : {inFilePath}")
+
   inFileName = inFilePath.split('/')[-1]
   inFileName = inFileName.replace(".root","")
 
   PathPrefix="root://xrootd-cms.infn.it/"
 
-  inFileInTMPDIR = False
+  inFileInTMPDIR = ""
   inFilePathFinal = None
 
   if inFilePath.startswith("/store/"):
@@ -69,15 +80,11 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
       print(f"to tmp dir: {inFilePathFinal}")
       command = ["xrdcp", "-f", inFilePathTmp, inFilePathFinal]
       subprocess.run(command)
-      inFileInTMPDIR = True
+      inFileInTMPDIR = inFilePathFinal
     else:
       inFilePathFinal = inFilePathTmp
   else:
     inFilePathFinal = inFilePath
-
-  print("")
-  print("==============================================")
-  print(f"Skimming {iFile}/{nFiles} : {inFilePathFinal}")
 
   df = ROOT.ROOT.RDataFrame("Events",inFilePathFinal)
   ROOT.RDF.Experimental.AddProgressBar(df) #Only available in ROOT version >= 6.30
@@ -111,11 +118,18 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   ]
   TriggerFlagsSel = "("+"||".join(TriggerFlags)+")"
 
+  #
+  #
+  applyTeVJetSel=False
+  if applyTeVJetSel:
+    df = df.Define("nJetPt900","Sum(Jet_pt >= 900.f)")
 
   #
   #
   #
   SelectionStr = f"{TriggerFlagsSel} && {METFiltersSel} && nJet>=1"
+  if applyTeVJetSel:
+    SelectionStr += "&& nJetPt900>=1"
   df = df.Filter(SelectionStr)
 
   # df = ROOT.AddJEC(ROOT.RDF.AsRNode(df))
@@ -127,7 +141,6 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   outFileName=f"NanoSkim_{sampleName}_{inFileName}.root"
   outFilePathTemp=f"{TMPDIR}/{outFileName}.root"
 
-  outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/"
   outFilePathFinal=""
   if "/eos/user" in outDir:  outFilePathFinal+="root://eosuser.cern.ch/"
   elif "/eos/cms" in outDir: outFilePathFinal+="root://eoscms.cern.ch/"
@@ -193,9 +206,9 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
     command = ["xrdcp", "-f", outFilePathTemp, outFilePathFinal]
     subprocess.run(command)
 
-  if inFileInTMPDIR:
-    os.remove(outFilePathTemp)
-
+  if inFileInTMPDIR != "":
+    print(f"Deleting input file in TMPDIR: {inFileInTMPDIR}")
+    os.remove(inFileInTMPDIR)
 
   del df
 
