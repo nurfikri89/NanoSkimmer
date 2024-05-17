@@ -30,13 +30,17 @@ nInFiles = len(inFileList)
 
 for iFile, inputFilePath in enumerate(inFileList):
   inputFileName=inputFilePath.split("/")[-1]
-  outputFileName=inputFileName.replace("NanoSkim","NanoSkimJEC")
-  outputFileName=inputFileName.replace("NanoAOD","NanoAODJEC")
+  isMC = "Summer" in inputFileName or "Winter" in inputFileName
+  if isMC:
+    print("This file is MC")
+  else:
+    print("This file is Data")
+  outputFileName = inputFileName.replace("NanoSkim","NanoSkimJEC")
   outputFilePath=outputFileDir+outputFileName
 
   print(f"Run AddJEC() for file {iFile} / {nInFiles}")
 
-  ROOT.AddJEC(inputFilePath,outputFilePath,"Events",jecVersion)
+  ROOT.AddJEC(inputFilePath,outputFilePath,"Events",jecVersion,isMC)
   print("")
 
 timerMain.Stop()
