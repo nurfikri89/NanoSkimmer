@@ -22,7 +22,7 @@ nfiles = args.nfiles
 isMC = args.isMC
 
 goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380470_Golden.json"
-outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/" #LXPLUS
+# outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/" #LXPLUS
 outDir = f"./output/" #Hefaistos
 
 ##########################################
