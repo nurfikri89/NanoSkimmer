@@ -15,7 +15,7 @@ parser.add_argument('-f', '--nfiles',   type=int,  default=-1)
 parser.add_argument('-m', '--isMC',     action='store_true', default=False)
 args = parser.parse_args()
 
-downloadInput = True
+downloadInput = False
 
 sampleName = args.sample
 nfiles = args.nfiles
