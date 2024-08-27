@@ -6,13 +6,15 @@ import ROOT
 ROOT.gROOT.SetBatch()
 ROOT.gSystem.Load("obj/libHelpers.so")
 
-TMPDIR=os.getenv("TMPDIR")
-
 parser = argparse.ArgumentParser("")
 parser.add_argument('-s', '--sample',   type=str,  default="")
 parser.add_argument('-c', '--cpus',     type=int,  default=1)
 parser.add_argument('-f', '--nfiles',   type=int,  default=-1)
 parser.add_argument('-m', '--isMC',     action='store_true', default=False)
+parser.add_argument('--doSkimTeVJet',   action='store_true', default=False)
+parser.add_argument('--doSkimPhoton',   action='store_true', default=False)
+parser.add_argument('--doSkimDiElec',   action='store_true', default=False)
+
 args = parser.parse_args()
 
 downloadInput = False
@@ -21,17 +23,55 @@ sampleName = args.sample
 nfiles = args.nfiles
 isMC = args.isMC
 
-goldenJSONPath  = "data/lumi/Cert_Collisions2024_378981_380470_Golden.json"
-# outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/" #LXPLUS
-outDir = f"./output/" #Hefaistos
+doSkimTeVJet = args.doSkimTeVJet
+doSkimPhoton = args.doSkimPhoton
+doSkimDiElec = args.doSkimDiElec
 
+goldenJSONPath2024E = "data/lumi/Collisions24_13p6TeV_378981_381309_DCSOnly_TkPx.json"
+goldenJSONPath2024  = "data/lumi/Cert_Collisions2024_378981_380470_Golden.json"
+goldenJSONPath2023  = "data/lumi/Cert_Collisions2023_366442_370790_Golden.json"
+
+# lxplus
+# outDir = f"/eos/cms/store/group/phys_jetmet/nbinnorj/NanoSkimJEC/"
+# TMPDIR=os.getenv("TMPDIR")
+
+#Hefaistos
+TMPDIR="/tmp/"
+
+applyTeVJetSel = False
+applyPhoton200Sel = False
+applyDiElectron30 = False
+
+if doSkimTeVJet:
+  # outDir = f"./output_JetTeVSkim/"
+  # outDir = f"./output_JetTeVSkim_PFNano/"
+  outDir = f"./output_JetTeVSkim_PFNano_0p2/"
+  applyTeVJetSel = True
+if doSkimPhoton:
+  outDir = f"./output_Photon200Skim/"
+  applyPhoton200Sel = True
+
+if doSkimDiElec:
+  outDir = f"./output_DiElectron30JetPt180Skim/"
+  applyDiElectron30 = True
+
+if not(applyTeVJetSel) and not(applyPhoton200Sel) and not(applyDiElectron30):
+  raise Exception(f"No selection is applied. Please check! {applyTeVJetSel=}, {applyPhoton200Sel=}, {applyDiElectron30=}")
+
+
+outDirFinal = f"{outDir}/{sampleName}"
+if not os.path.exists(outDirFinal):
+  os.makedirs(outDirFinal)
 ##########################################
 #
 #
 #
 ##########################################
+# inFilesDir="./samples"
+inFilesDir="./samplesPFNano/"
+
 inFiles=[]
-with open(f"./samples/{sampleName}.txt", 'r') as txtfile:
+with open(f"{inFilesDir}/{sampleName}.txt", 'r') as txtfile:
   inFiles = [line.rstrip() for line in txtfile]
 
 if nfiles > 0:
@@ -54,6 +94,14 @@ nFiles = len(inFilesFinal)
 print(f"Processing sample {sampleName}")
 print(f"isMC = {isMC}")
 ROOT.ROOT.EnableImplicitMT(args.cpus)
+
+goldenJSONPath = None
+if "Run2024" in sampleName:
+  goldenJSONPath = goldenJSONPath2024
+if "Run2024E" in sampleName:
+  goldenJSONPath = goldenJSONPath2024E
+if "Run2023" in sampleName:
+  goldenJSONPath = goldenJSONPath2023
 
 if not(isMC):
   print(f"Setup DC JSON: {goldenJSONPath}")
@@ -86,6 +134,17 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   else:
     inFilePathFinal = inFilePath
 
+  #
+  #
+  #
+  tempInfile = ROOT.TFile(inFilePathFinal,"OPEN")
+  tempInTree = tempInfile.Get("Events")
+  tempNEntries = tempInTree.GetEntries()
+
+  if tempNEntries == 0:
+    print(f"Events tree in {inFilePathFinal} has 0 entries. Skipping this file")
+    return
+
   df = ROOT.ROOT.RDataFrame("Events",inFilePathFinal)
   # ROOT.RDF.Experimental.AddProgressBar(df) #Only available in ROOT version >= 6.30
   df_count_initial = df.Count()
@@ -113,23 +172,47 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   #
   #
   #
-  TriggerFlags = [
-    "HLT_PFJet500",
-  ]
-  TriggerFlagsSel = "("+"||".join(TriggerFlags)+")"
-
-  #
-  #
-  applyTeVJetSel=False
+  TriggerFlags = []
   if applyTeVJetSel:
-    df = df.Define("nJetPt900","Sum(Jet_pt >= 900.f)")
+    TriggerFlags += ["HLT_PFJet500"]
+    df = df.Define("nJetPt1000","Sum(Jet_pt >= 1000.f)")
+    df = df.Define("passTeVJetSel","nJetPt1000>=1")
+
+  if applyPhoton200Sel:
+    TriggerFlags += [
+      # "HLT_Photon50EB_TightID_TightIso",
+      # "HLT_Photon55EB_TightID_TightIso",
+      # "HLT_Photon75EB_TightID_TightIso",
+      # "HLT_Photon75EB_TightID_TightIso",
+      # "HLT_Photon90EB_TightID_TightIso",
+      "HLT_Photon200"
+    ]
+    df = df.Define("nTightPhoton200","Sum(Photon_pt >= 200.f && Photon_cutBased >= 3)")
+    df = df.Define("passPhotonSel","nTightPhoton200>=1")
+
+  if applyDiElectron30:
+    TriggerFlags += ["HLT_Ele30_WPTight_Gsf","HLT_Ele23_Ele12_CaloIdL_TrackIdL_IsoVL"]
+    df = df.Define("nTightElectron30","Sum(Electron_pt >= 30.f && Electron_cutBased >= 3)")
+    df = df.Define("nJetPt180","Sum(Jet_pt >= 180.f)")
+    df = df.Define("passDiElectronSel","nTightElectron30>=2 && nJetPt180>=1")
+
+  if len(TriggerFlags) > 0:
+    TriggerFlagsSel = "("+"||".join(TriggerFlags)+")"
+  else:
+    TriggerFlagsSel = "(true)"
 
   #
   #
   #
   SelectionStr = f"{TriggerFlagsSel} && {METFiltersSel} && nJet>=1"
   if applyTeVJetSel:
-    SelectionStr += "&& nJetPt900>=1"
+    SelectionStr += " && passTeVJetSel"
+  if applyPhoton200Sel:
+    SelectionStr += " && passPhotonSel"
+  if applyDiElectron30:
+    SelectionStr += " && passDiElectronSel"
+
+  print(f"Applying selection : {SelectionStr}")
   df = df.Filter(SelectionStr)
 
   # df = ROOT.AddJEC(ROOT.RDF.AsRNode(df))
@@ -139,19 +222,24 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
   #
   #
   outFileName=f"NanoSkim_{sampleName}_{inFileName}.root"
-  outFilePathTemp=f"{TMPDIR}/{outFileName}.root"
+  outFilePathTemp=f"{TMPDIR}/{outFileName}"
 
   outFilePathFinal=""
-  if "/eos/user" in outDir:  outFilePathFinal+="root://eosuser.cern.ch/"
-  elif "/eos/cms" in outDir: outFilePathFinal+="root://eoscms.cern.ch/"
-  outFilePathFinal += f"{outDir}/{outFileName}.root"
+  if "/eos/user" in outDirFinal:  outFilePathFinal+="root://eosuser.cern.ch/"
+  elif "/eos/cms" in outDirFinal: outFilePathFinal+="root://eoscms.cern.ch/"
+  outFilePathFinal += f"{outDirFinal}/{outFileName}"
 
   branchesToSave = df.GetColumnNames()
   branchesToSaveFinal = []
   for b in branchesToSave:
     bStr = str(b)
-    # isHLTNotJetFlag = ("HLT_" in bStr or "DST_" in bStr) and not("PFJet" in bStr)
-    isHLTNotJetFlag = ("HLT_" in bStr or "DST_" in bStr) and not("HLT_PFJet" in bStr)
+    isHLTFlag = False
+    if applyTeVJetSel:
+      isHLTFlag = ("HLT_" in bStr or "DST_" in bStr) and not("HLT_PFJet" in bStr)
+    if applyDiElectron30:
+      isHLTFlag = ("HLT_" in bStr or "DST_" in bStr) and not("HLT_Ele" in bStr)
+    if applyPhoton200Sel:
+      isHLTFlag = ("HLT_" in bStr or "DST_" in bStr) and not("HLT_Photon" in bStr)
     isL1Flag = "L1_" in bStr
     isLowPtElec = "nLowPtElectron" in bStr or "LowPtElectron_" in bStr
     isSV = "nSV" in bStr or "SV_" in bStr
@@ -176,7 +264,7 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
     isFatJetForJEC =  "nFatJetForJEC" in bStr or "FatJetForJEC_" in bStr
     isGenJetAK8ForJEC = "nGenJetAK8ForJEC" in bStr or "GenJetAK8ForJEC_" in bStr
     isJetCalo = "nJetCalo" in bStr or "JetCalo_" in bStr
-    if not(isHLTNotJetFlag or isL1Flag or isLowPtElec or isTrigObj or \
+    if not(isHLTFlag or isL1Flag or isLowPtElec or isTrigObj or \
       isSV or isSoftActivityJet or isSubJet or isFatJet or isTau or isBoostedTau or \
       isFsrPhoton or isGenDressedLepton or isGenIsolatedPhoton or \
       isGenPart or isGenJetAK8 or \
@@ -205,6 +293,8 @@ def SkimNanoFile(nFiles, iFile, inFilePath):
     print(f"Copying output file to final path: {outFilePathFinal}")
     command = ["xrdcp", "-f", outFilePathTemp, outFilePathFinal]
     subprocess.run(command)
+    print(f"Deleting output file in TMPDIR: {outFilePathTemp}")
+    os.remove(outFilePathTemp)
 
   if inFileInTMPDIR != "":
     print(f"Deleting input file in TMPDIR: {inFileInTMPDIR}")
